@@ -2,10 +2,12 @@ package com.example.securitydemo;
 
 import com.example.securitydemo.jwt.AuthEntryPointJwt;
 import com.example.securitydemo.jwt.AuthTokenFilter;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -24,14 +26,15 @@ import javax.sql.DataSource;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityFilter {
 
     private final DataSource dataSource;
-    private final AuthEntryPointJwt unauthorizedHanlder;
+    private final AuthEntryPointJwt unauthorizedHandler;
 
     public SecurityFilter(DataSource dataSource, AuthEntryPointJwt authEntryPointJwt) {
         this.dataSource = dataSource;
-        unauthorizedHanlder = authEntryPointJwt;
+        unauthorizedHandler = authEntryPointJwt;
     }
 
     @Bean
@@ -48,7 +51,7 @@ public class SecurityFilter {
         http.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 //        http.formLogin(withDefaults());
 //        http.httpBasic(withDefaults());
-        http.exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHanlder));
+        http.exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler));
 
         http.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin));
         http.csrf(AbstractHttpConfigurer::disable);
@@ -59,15 +62,27 @@ public class SecurityFilter {
 
     @Bean
     public UserDetailsService userDetailsService() {
-        UserDetails user1 = User.withUsername("user1").password(passwordEncoder().encode("{noop}password1")).roles("USER").build();
+        return new JdbcUserDetailsManager(dataSource);
+    }
 
-        UserDetails admin = User.withUsername("admin").password(passwordEncoder().encode("{noop}adminPass")).roles("ADMIN").build();
+    @Bean
+    public CommandLineRunner initData(UserDetailsService userDetailsService) {
+        return args -> {
+            JdbcUserDetailsManager manager = (JdbcUserDetailsManager) userDetailsService;
+            UserDetails user1 = User.withUsername("user1")
+                    .password(passwordEncoder().encode("password1"))
+                    .roles("USER")
+                    .build();
+            UserDetails admin = User.withUsername("admin")
+                    //.password(passwordEncoder().encode("adminPass"))
+                    .password(passwordEncoder().encode("adminPass"))
+                    .roles("ADMIN")
+                    .build();
 
-        JdbcUserDetailsManager userDetailsManager = new JdbcUserDetailsManager(dataSource);
-        userDetailsManager.createUser(user1);
-        userDetailsManager.createUser(admin);
-        return userDetailsManager;
-//        return new InMemoryUserDetailsManager(user1, admin);
+            JdbcUserDetailsManager userDetailsManager = new JdbcUserDetailsManager(dataSource);
+            userDetailsManager.createUser(user1);
+            userDetailsManager.createUser(admin);
+        };
     }
 
     @Bean
